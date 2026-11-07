@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>بحث الأسعار</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1d2330; --muted:#6b7280; --accent:#e8771e; --accent-soft:#fdf0e4; --border:#e3e6eb; --danger:#c0392b; color-scheme: light; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#161a21; --card:#222832; --text:#f1f3f6; --muted:#9aa3b2; --accent:#f09046; --accent-soft:#3a2a1c; --border:#343b48; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --bg:#161a21; --card:#222832; --text:#f1f3f6; --muted:#9aa3b2; --accent:#f09046; --accent-soft:#3a2a1c; --border:#343b48; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; color:var(--text); font-family:"Segoe UI",Tahoma,Arial,sans-serif; font-size:18px; min-height:100vh;
+    background: linear-gradient(135deg, #fdf0e4, #e6f0ff, #e7f7ee, #fdf0e4); background-size:300% 300%; animation: drift 14s ease infinite; }
+  :root[data-theme="dark"] body, :root:not([data-theme="light"]) body { }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body { background: linear-gradient(135deg,#2a1f16,#1a2233,#16281f,#2a1f16); background-size:300% 300%; } }
+  :root[data-theme="dark"] body { background: linear-gradient(135deg,#2a1f16,#1a2233,#16281f,#2a1f16); background-size:300% 300%; }
+  @keyframes drift { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+  .wrap { max-width:480px; margin:0 auto; padding:12px; }
+  header { display:flex; justify-content:space-between; align-items:center; padding:6px 4px 12px; }
+  header h1 { font-size:20px; margin:0; }
+  .btn { background:none; border:1px solid var(--border); color:var(--muted); border-radius:10px; padding:6px 10px; font-size:14px; cursor:pointer; }
+  .search { display:flex; align-items:center; gap:8px; background:var(--card); border:2px solid var(--border); border-radius:16px; padding:6px 8px 6px 12px; backdrop-filter: blur(6px); }
+  .search:focus-within { border-color:var(--accent); }
+  .search input { flex:1; border:none; outline:none; background:transparent; color:var(--text); font-size:20px; padding:12px 4px; min-width:0; }
+  .mic { width:56px; height:56px; flex:0 0 56px; border-radius:14px; border:none; background:var(--accent); color:#fff; font-size:24px; cursor:pointer; }
+  .mic.listening { animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity:.5; } }
+  .hint { color:var(--muted); font-size:14px; margin:8px 4px 0; min-height:20px; }
+  .count { color:var(--muted); font-size:14px; margin:12px 4px 6px; }
+  .card { display:flex; gap:12px; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:12px; margin-bottom:10px; backdrop-filter: blur(6px); transition: transform .15s; }
+  .card:active { transform: scale(.98); }
+  .thumb { width:72px; height:72px; flex:0 0 72px; border-radius:12px; background:var(--accent-soft); display:flex; align-items:center; justify-content:center; font-size:30px; overflow:hidden; }
+  .thumb img { width:100%; height:100%; object-fit:cover; }
+  .info { flex:1; min-width:0; }
+  .name { font-size:18px; font-weight:600; line-height:1.35; }
+  .meta { color:var(--muted); font-size:14px; margin-top:4px; }
+  .alt { color:var(--muted); font-size:14px; margin-top:4px; }
+  .price-row { display:flex; justify-content:space-between; align-items:flex-end; margin-top:8px; }
+  .price { font-size:30px; font-weight:700; color:var(--accent); direction:ltr; }
+  .price small { font-size:14px; color:var(--muted); font-weight:400; margin-right:4px; }
+  .date-box { text-align:left; }
+  .upd { color:var(--muted); font-size:11px; line-height:1.2; }
+  .date { color:var(--muted); font-size:12px; direction:ltr; }
+  .empty { text-align:center; color:var(--muted); padding:40px 12px; }
+  .empty .big { font-size:40px; margin-bottom:8px; }
+  .err { background:var(--card); border:1px solid var(--danger); color:var(--danger); border-radius:12px; padding:12px; margin:10px 0; text-align:center; }
+  .retry { margin-top:8px; background:var(--accent); color:#fff; border:none; border-radius:10px; padding:10px 16px; font-size:16px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>بحث الأسعار</h1>
+    <button class="btn" id="themeBtn">وضع</button>
+  </header>
+
+  <div class="search">
+    <input id="q" type="search" placeholder="اكتب اسم الصنف أو الكود" autocomplete="off">
+    <button class="mic" id="mic" aria-label="بحث صوتي">🎤</button>
+  </div>
+  <div class="hint" id="hint"></div>
+  <div id="loadErr"></div>
+  <div class="count" id="count"></div>
+  <div id="results"></div>
+</div>
+
+<script>
+  // رابط الشيت (CSV منشور). إذا تغيّر الرابط، بدّلو هون.
+  const SHEET_ID = "1l25-hMAi9yv8DkVEcRnF5IQdOuvw1ObN4NlWI0dWNwg";
+  const GID = "806567200";
+
+  let ITEMS = [];
+  const $ = id => document.getElementById(id);
+  const norm = s => (s || "").toString().toLowerCase()
+    .replace(/[\u064B-\u0652]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim();
+  const splitList = s => (s || "").split(/[,،]/).map(x => x.trim()).filter(Boolean);
+
+  // قارئ CSV يفهم الحقول بين علامات التنصيص
+  function parseCSV(text) {
+    const rows = []; let row = [], field = "", inQ = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQ) {
+        if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+        else if (c === '"') inQ = false;
+        else field += c;
+      } else if (c === '"') inQ = true;
+      else if (c === ",") { row.push(field); field = ""; }
+      else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+      else if (c !== "\r") field += c;
+    }
+    if (field || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  // يحوّل التاريخ 2026/10/14 إلى 14/10/2026 للعرض، ويقارن بالتاريخ الأحدث
+  const dmy = s => { const m = String(s||"").match(/(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/); return m ? `${m[3].padStart(2,"0")}/${m[2].padStart(2,"0")}/${m[1]}` : (s||""); };
+  const key = s => { const m = String(s||"").match(/(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/); return m ? m[1]+m[2].padStart(2,"0")+m[3].padStart(2,"0") : ""; };
+
+  function buildItems(text) {
+    const rows = parseCSV(text).filter(r => r.some(c => c.trim() !== ""));
+    if (!rows.length) return [];
+    const head = rows[0].map(h => h.trim());
+    const ix = n => head.indexOf(n);
+    const cCode = ix("رمز الصنف"), cName = ix("الصنف"), cAlt = ix("أسماء أخرى"), cPrice = ix("السعر"),
+          cUnit = ix("الوحدة"), cCat = ix("الفئة"), cSup = ix("المورد"), cDate = ix("تاريخ التحديث"), cImg = ix("الصورة");
+    const byCode = new Map();
+    for (const r of rows.slice(1)) {
+      const code = (r[cCode] || "").trim();
+      if (!code) continue;
+      const price = parseFloat((r[cPrice] || "").replace(",", "."));
+      if (isNaN(price)) continue;
+      const rec = {
+        code, name: (r[cName]||"").trim(), alt: splitList(r[cAlt]), price,
+        unit: (r[cUnit]||"").trim(), category: (r[cCat]||"").trim(),
+        suppliers: splitList(r[cSup]), date: dmy(r[cDate]), dkey: key(r[cDate]), img: (r[cImg]||"").trim()
+      };
+      const old = byCode.get(code);
+      if (!old) { byCode.set(code, rec); continue; }
+      // نفس الكود بأكتر من سطر: ناخد الأحدث، ونجمع الموردين والأسماء الأخرى
+      const newer = rec.dkey >= old.dkey;
+      const base = newer ? rec : old;
+      base.suppliers = [...new Set([...old.suppliers, ...rec.suppliers])];
+      base.alt = [...new Set([...old.alt, ...rec.alt])];
+      if (!base.img) base.img = (newer ? old.img : rec.img);
+      byCode.set(code, base);
+    }
+    return [...byCode.values()];
+  }
+
+  // تحويل استجابة Google Visualization إلى نص CSV عشان نعيد استعمال نفس المعالج
+  function gvizToCSV(res) {
+    const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const toVal = c => {
+      if (!c || c.v === null || c.v === undefined) return "";
+      const v = c.v;
+      const m = typeof v === "string" && v.match(/^Date\((\d+),(\d+),(\d+)/);
+      if (m) return `${m[1]}/${String(+m[2] + 1).padStart(2, "0")}/${String(m[3]).padStart(2, "0")}`;
+      return v;
+    };
+    let rows = res.table.rows.map(r => r.c.map(toVal));
+    let header = res.table.cols.map(c => c.label || "");
+    if (!header.some(h => h.trim())) { header = rows[0].map(String); rows = rows.slice(1); }
+    return [header.map(esc).join(","), ...rows.map(r => r.map(esc).join(","))].join("\n");
+  }
+
+  // تحميل البيانات عبر <script> بدل fetch، فيشتغل من ملف محلي أو أي استضافة
+  function loadSheet() {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("timeout")), 12000);
+      window.google = window.google || {};
+      window.google.visualization = { Query: { setResponse: r => { clearTimeout(timer); resolve(r); } } };
+      const s = document.createElement("script");
+      s.onerror = () => { clearTimeout(timer); reject(new Error("net")); };
+      s.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${GID}`;
+      document.head.appendChild(s);
+    });
+  }
+
+const SNAPSHOT = "\"رمز الصنف\",\"الصنف\",\"أسماء أخرى\",\"السعر\",\"الوحدة\",\"الفئة\",\"المورد\",\"تاريخ التحديث\",\"الصورة\"\n\"too-022\",\"متر SHARK 5 متر\",\"\",\"1.0\",\"قطعة\",\"أدوات وقياس (أمتار)\",\"مخازن النور\",\"2026/02/23\",\"\"\n\"too-022\",\"متر SHARK 5 متر\",\"\",\"1.0\",\"قطعة\",\"أدوات وقياس (أمتار)\",\"مخازن النور\",\"2026/07/20\",\"\"\n\"too-023\",\"متر SHARK 7.5 متر\",\"\",\"1.5\",\"قطعة\",\"أدوات وقياس (أمتار)\",\"مخازن النور\",\"2026/07/20\",\"\"\n\"st-007\",\"SHARK Gloves SIL. Brown\",\"\",\"0.313\",\"قطعة\",\"أصناف متنوعة\",\"مخازن النور\",\"2026/06/20\",\"\"\n\"lock-088\",\"قفل SHARK 6 تنزيل سم\",\"\",\"6.25\",\"قطعة\",\"أقفال\",\"مخازن النور\",\"2026/01/29\",\"\"\n\"lock-072\",\"قفل SHARK 60 ب\",\"\",\"6.75\",\"قطعة\",\"أقفال\",\"مخازن النور\",\"2026/01/29\",\"\"\n\"fer-003\",\"باغ فونت مربع 16 ملم\",\"\",\"0.42\",\"قطعة\",\"إكسسوارات وطابات حديد\",\"مخازن النور\",\"2026/08/06\",\"\"\n\"bol-010\",\"بحر قلاب قصير فضي\",\"\",\"0.8\",\"قطعة\",\"إكسسوارات وطابات حديد\",\"مخازن النور\",\"2026/06/04\",\"\"\n\"fer-145\",\"طابة مع قاعدة 6 سم\",\"\",\"0.5\",\"قطعة\",\"إكسسوارات وطابات حديد\",\"مخازن النور\",\"2026/04/07\",\"\"\n\"fer-146\",\"طابة مع قاعدة سم8\",\"\",\"0.8\",\"قطعة\",\"إكسسوارات وطابات حديد\",\"مخازن النور\",\"2026/10/14\",\"\"\n\"bol-003\",\"نجر ذهبي 12 سم\",\"\",\"0.5\",\"قطعة\",\"إكسسوارات وطابات حديد\",\"مخازن النور\",\"2026/06/16\",\"\"\n\"scr-252\",\"برغي ريشة صليب تايواني 4.2*5 سم\",\"\",\"0.0155\",\"قطعة\",\"البراغي والعزقات\",\"مخازن النور\",\"2026/04/07\",\"\"\n\"scr-240\",\"برغي مزيبق بالكيلو 8 ملم 10 سم\",\"\",\"1.5\",\"كيلو\",\"البراغي والعزقات\",\"مخازن النور\",\"2026/03/19\",\"\"\n\"scr-238\",\"برغي مزيبق بالكيلو 8 ملم 8 سم\",\"\",\"1.65\",\"كيلو\",\"البراغي والعزقات\",\"مخازن النور\",\"2026/09/30\",\"\"\n\"scr-239\",\"برغي مزيبق بالكيلو 8 ملم سم9\",\"\",\"1.65\",\"كيلو\",\"البراغي والعزقات\",\"مخازن النور\",\"2026/10/14\",\"\"\n\"scr-239\",\"برغي مزيبق بالكيلو ملم 9*8 سم\",\"\",\"1.65\",\"كيلو\",\"البراغي والعزقات\",\"مخازن النور\",\"2026/05/20\",\"\"\n\"scr-212\",\"رندال مزيبق بالكيلو 8 ملم\",\"\",\"1.65\",\"كيلو\",\"البراغي والعزقات\",\"مخازن النور\",\"2026/04/07\",\"\"\n\"scr-259\",\"طربوش برغي ريشة 3/8\",\"\",\"0.33\",\"قطعة\",\"البراغي والعزقات\",\"مخازن النور\",\"2026/06/13\",\"\"\n\"scr-153\",\"عزق مزيبق بالوزن ملم8\",\"\",\"1.65\",\"كيلو\",\"البراغي والعزقات\",\"مخازن النور\",\"2026/06/13\",\"\"\n\"hin-004\",\"مفصلات 10*20 سم\",\"\",\"0.37\",\"قطعة\",\"المفصلات\",\"مخازن النور\",\"2026/07/14\",\"\"\n\"hin-005\",\"مفصلات 11*22 سم\",\"\",\"0.46\",\"قطعة\",\"المفصلات\",\"مخازن النور\",\"2026/07/14\",\"\"\n\"hin-006\",\"مفصلات 12*25 سم\",\"\",\"0.62\",\"قطعة\",\"المفصلات\",\"مخازن النور\",\"2026/07/14\",\"\"\n\"hin-007\",\"مفصلات 14*30 سم\",\"\",\"1.05\",\"قطعة\",\"المفصلات\",\"مخازن النور\",\"2026/01/31\",\"\"\n\"hin-001\",\"مفصلات 6*14 سم\",\"\",\"0.13\",\"قطعة\",\"المفصلات\",\"مخازن النور\",\"2026/07/14\",\"\"\n\"hin-002\",\"مفصلات 8*16 سم\",\"\",\"0.19\",\"قطعة\",\"المفصلات\",\"مخازن النور\",\"2026/07/14\",\"\"\n\"hin-003\",\"مفصلات 9*18 سم\",\"\",\"0.28\",\"قطعة\",\"المفصلات\",\"مخازن النور\",\"2026/07/14\",\"\"\n\"wo-009\",\"دولاب اورونج 4\",\"\",\"1.5\",\"قطعة\",\"دواليب ورولمانات\",\"مخازن النور\",\"2026/02/28\",\"\"\n\"wo-010\",\"دولاب اورونج 4 فريم\",\"\",\"1.95\",\"قطعة\",\"دواليب ورولمانات\",\"مخازن النور\",\"2026/02/28\",\"\"\n\"whtu-003\",\"دولاب رولمان فضي 10 سم قاعدة\",\"\",\"4.0\",\"قطعة\",\"دواليب ورولمانات\",\"مخازن النور\",\"2026/06/04\",\"\"\n\"whtu-002\",\"دولاب رولمان فضي 8 سم قاعدة\",\"\",\"3.0\",\"قطعة\",\"دواليب ورولمانات\",\"مخازن النور\",\"2026/03/19\",\"\"\n\"wht-003\",\"دولاب رولمان فضي سم 8 قاعدة\",\"\",\"3.0\",\"قطعة\",\"دواليب ورولمانات\",\"مخازن النور\",\"2026/03/19\",\"\"\n\"ras-001\",\"رصور باب سحاب 3 سم 5 متر\",\"\",\"3.45\",\"قطعة\",\"رصورات وباب سحاب\",\"مخازن النور\",\"2026/02/23\",\"\"\n\"ras-002\",\"رصور باب سحاب سم 3.5 5 متر\",\"\",\"4.025\",\"قطعة\",\"رصورات وباب سحاب\",\"مخازن النور\",\"2026/02/23\",\"\"\n\"ras-003\",\"رصور باب سحاب سم 4 5 متر\",\"\",\"4.6\",\"قطعة\",\"رصورات وباب سحاب\",\"مخازن النور\",\"2026/02/23\",\"\"\n\"ras-004\",\"رصور باب سحاب سم 5 5 متر\",\"\",\"5.75\",\"قطعة\",\"رصورات وباب سحاب\",\"مخازن النور\",\"2026/05/20\",\"\"\n\"dri-020\",\"ريشة 10.5 ملم كوبالت\",\"\",\"3.0\",\"قطعة\",\"ريش الحفر (كوبالت)\",\"مخازن النور\",\"2026/03/31\",\"\"\n\"dri-023\",\"ريشة 12 ملم كوبالت\",\"\",\"4.45\",\"قطعة\",\"ريش الحفر (كوبالت)\",\"مخازن النور\",\"2026/03/31\",\"\"\n\"dri-013\",\"ريشة 7 ملم كوبالت\",\"\",\"1.2\",\"قطعة\",\"ريش الحفر (كوبالت)\",\"مخازن النور\",\"2026/06/13\",\"\"\n\"dri-015\",\"ريشة 8 ملم كوبالت\",\"\",\"1.7\",\"قطعة\",\"ريش الحفر (كوبالت)\",\"مخازن النور\",\"2026/06/13\",\"\"\n\"dri-009\",\"ريشة ملم 5 كوبالت\",\"\",\"0.6\",\"قطعة\",\"ريش الحفر (كوبالت)\",\"مخازن النور\",\"2026/06/13\",\"\"\n\"dri-011\",\"ريشة ملم 6 كوبالت\",\"\",\"0.85\",\"قطعة\",\"ريش الحفر (كوبالت)\",\"مخازن النور\",\"2026/03/31\",\"\"\n\"dri-015\",\"ريشة ملم 8 كوبالت\",\"\",\"1.55\",\"قطعة\",\"ريش الحفر (كوبالت)\",\"مخازن النور\",\"2026/03/31\",\"\"\n\"dri-016\",\"ريشة ملم 8.5 كوبالت\",\"\",\"1.95\",\"قطعة\",\"ريش الحفر (كوبالت)\",\"مخازن النور\",\"2026/06/13\",\"\"\n\"dri-017\",\"ريشة ملم 9 كوبالت\",\"\",\"2.15\",\"قطعة\",\"ريش الحفر (كوبالت)\",\"مخازن النور\",\"2026/03/31\",\"\"\n\"dri-018\",\"ريشة ملم 9.5 كوبالت\",\"\",\"2.65\",\"قطعة\",\"ريش الحفر (كوبالت)\",\"مخازن النور\",\"2026/06/13\",\"\"\n\"cla-006\",\"لقطة المنيوم قدار طرف\",\"\",\"0.19\",\"قطعة\",\"لقطات ألمنيوم\",\"مخازن النور\",\"2026/06/13\",\"\"\n\"cla-005\",\"لقطة المنيوم قدار نصف\",\"\",\"0.2\",\"قطعة\",\"لقطات ألمنيوم\",\"مخازن النور\",\"2026/06/04\",\"\"\n\"cla-004\",\"لقطة المنيوم كاملة طرف\",\"\",\"0.3\",\"قطعة\",\"لقطات ألمنيوم\",\"مخازن النور\",\"2026/02/27\",\"\"\n\"cla-003\",\"لقطة المنيوم كاملة نصف\",\"\",\"0.3\",\"قطعة\",\"لقطات ألمنيوم\",\"مخازن النور\",\"2026/02/27\",\"\"\n\"wel-011\",\"زجاجة لحام صغيرة رقم 10\",\"\",\"0.095\",\"قطعة\",\"معدات ومستلزمات لحام\",\"مخازن النور\",\"2026/06/13\",\"\"\n\"wel-009\",\"زجاجة لحام صغيرة رقم 9\",\"\",\"0.09\",\"قطعة\",\"معدات ومستلزمات لحام\",\"مخازن النور\",\"2026/01/29\",\"\"\n\"wel-007\",\"طبشور صناعي\",\"\",\"0.058\",\"قطعة\",\"معدات ومستلزمات لحام\",\"مخازن النور\",\"2026/01/31\",\"\"\n\"wel-023\",\"مكنة لحام صينية\",\"\",\"26.0\",\"قطعة\",\"معدات ومستلزمات لحام\",\"مخازن النور\",\"2026/04/01\",\"\"";
+  async function load() {
+    $("loadErr").innerHTML = "";
+    $("count").textContent = "عم حمّل الأسعار...";
+    try {
+      const res = await loadSheet();
+      ITEMS = buildItems(gvizToCSV(res));
+      $("count").textContent = "";
+      render($("q").value);
+    } catch (e) {
+      ITEMS = buildItems(SNAPSHOT);
+      $("count").textContent = "";
+      render($("q").value);
+      $("loadErr").innerHTML = `<div class="err" style="color:var(--muted);border-color:var(--border)">ما قدرت أحدّث من الشيت، عم عرض نسخة محفوظة (${ITEMS.length} صنف)<br><button class="retry" id="retry">جرّب التحديث</button></div>`;
+      $("retry").onclick = load;
+    }
+  }
+
+  function search(q) {
+    const terms = norm(q).split(/\s+/).filter(Boolean);
+    if (!terms.length) return [];
+    return ITEMS.filter(it => {
+      const hay = norm([it.code, it.name, it.alt.join(" "), it.suppliers.join(" "), it.category].join(" "));
+      return terms.every(t => hay.includes(t));
+    });
+  }
+
+  function render(q) {
+    const res = $("results");
+    if (!norm(q)) {
+      $("count").textContent = ITEMS.length ? `${ITEMS.length} صنف` : "";
+      res.innerHTML = `<div class="empty"><div class="big">🔍</div>اكتب اسم الصنف أو اضغط الميكروفون</div>`;
+      return;
+    }
+    const list = search(q);
+    $("count").textContent = `${list.length} نتيجة`;
+    if (!list.length) {
+      res.innerHTML = `<div class="empty"><div class="big">🤷</div>ما لقيت شي، جرّب كلمة ثانية</div>`;
+      return;
+    }
+    res.innerHTML = list.map(it => `
+      <div class="card">
+        <div class="thumb">${it.img ? `<img src="${it.img}" alt="">` : "🔩"}</div>
+        <div class="info">
+          <div class="name">${it.name}</div>
+          <div class="meta">كود: ${it.code} · ${it.suppliers.join("، ") || "—"}</div>
+          <div class="meta">${it.category || "—"}${it.unit ? " · " + it.unit : ""}</div>
+                    ${it.alt.length ? `<div class="alt">أسماء أخرى: ${it.alt.join("، ")}</div>` : ""}
+          <div class="price-row">
+            <div class="price">${it.price.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 4 })}<small>$ / ${it.unit || "قطعة"}</small></div>
+            <div class="date-box"><div class="upd">آخر تحديث</div><div class="date">${it.date}</div></div>
+          </div>
+        </div>
+      </div>`).join("");
+  }
+
+  $("q").addEventListener("input", e => render(e.target.value));
+
+  // البحث الصوتي (Chrome بأندرويد)
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  $("mic").addEventListener("click", () => {
+    if (!SR) { $("hint").textContent = "البحث الصوتي غير مدعوم بهالمتصفح، اكتب يدوياً"; return; }
+    const r = new SR();
+    r.lang = "ar-LB"; r.interimResults = false;
+    $("mic").classList.add("listening"); $("hint").textContent = "عم تسمع...";
+    r.onresult = ev => { const t = ev.results[0][0].transcript; $("q").value = t; $("hint").textContent = `سمعت: ${t}`; render(t); };
+    r.onerror = () => { $("hint").textContent = "ما سمعت شي، جرّب مرة ثانية"; };
+    r.onend = () => $("mic").classList.remove("listening");
+    try { r.start(); } catch (e) { $("mic").classList.remove("listening"); }
+  });
+
+  $("themeBtn").addEventListener("click", () => {
+    const root = document.documentElement;
+    const dark = root.getAttribute("data-theme") === "dark" || (!root.getAttribute("data-theme") && matchMedia("(prefers-color-scheme: dark)").matches);
+    root.setAttribute("data-theme", dark ? "light" : "dark");
+  });
+
+  load();
+</script>
+</body>
+</html>
